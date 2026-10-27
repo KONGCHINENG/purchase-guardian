@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.next/
+.data/
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+.claude/

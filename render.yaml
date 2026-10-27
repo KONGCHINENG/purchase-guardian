@@ -1,0 +1,44 @@
+# Render Blueprint: managed Postgres + API + web.  Dashboard → New → Blueprint → this repo.
+databases:
+  - name: guardian-db
+    plan: free
+    databaseName: guardian
+    user: guardian
+
+services:
+  - type: web
+    name: guardian-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build -w @guardian/api
+    startCommand: npm run start -w @guardian/api
+    healthCheckPath: /health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: guardian-db, property: connectionString }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEB_URL
+        sync: false # e.g. https://guardian-web.onrender.com
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+  - type: web
+    name: guardian-web
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build -w @guardian/web
+    startCommand: npm run start -w @guardian/web
+    envVars:
+      - key: API_URL
+        sync: false # e.g. https://guardian-api.onrender.com

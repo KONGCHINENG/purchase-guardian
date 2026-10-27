@@ -1,0 +1,37 @@
+# Full local stack with real PostgreSQL:  docker compose up --build
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: guardian
+      POSTGRES_PASSWORD: guardian
+      POSTGRES_DB: guardian
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guardian"]
+      interval: 3s
+      retries: 20
+
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://guardian:guardian@db:5432/guardian
+      JWT_SECRET: ${JWT_SECRET:-local-compose-secret-change-me-0123456789}
+      WEB_URL: http://localhost:3000
+      PAYPAL_ENV: ${PAYPAL_ENV:-mock}
+      PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:-}
+      PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET:-}
+      PAYPAL_WEBHOOK_ID: ${PAYPAL_WEBHOOK_ID:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports: ["4000:4000"]
+
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile, args: { API_URL: "http://api:4000" } }
+    depends_on: [api]
+    ports: ["3000:3000"]
+
+volumes:
+  pgdata:

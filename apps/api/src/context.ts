@@ -1,0 +1,14 @@
+import type { PayPalGateway } from "@guardian/paypal-client";
+import type { FastifyBaseLogger } from "fastify";
+import type { Config } from "./config";
+import type { Database } from "./db/index";
+import type { PurchaseAnalyzer } from "./modules/ai/index";
+
+/** Everything a service needs, injected once at startup (and swapped for fakes in tests). */
+export type AppContext = {
+  config: Config;
+  db: Database;
+  analyzer: PurchaseAnalyzer;
+  paypal: PayPalGateway;
+  log: FastifyBaseLogger;
+};

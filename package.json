@@ -1,0 +1,30 @@
+{
+  "name": "purchase-guardian",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI purchasing agent guarded by deterministic spending policy and PayPal checkout.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @guardian/api\" \"npm run dev -w @guardian/web\"",
+    "build": "npm run build -w @guardian/api && npm run build -w @guardian/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:migrate": "npm run db:migrate -w @guardian/api"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "concurrently": "^10.0.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
