@@ -6,6 +6,8 @@ import { createDatabase, type Database } from "../src/db/index";
 import { runMigrations } from "../src/db/migrate";
 import { HeuristicAnalyzer } from "../src/modules/ai/heuristic";
 import type { AiAnalysis, AnalysisContext, PurchaseAnalyzer } from "../src/modules/ai/index";
+import { OfflineShoppingAgent } from "../src/modules/demo-store/agent";
+import type { Notifier, PushMessage } from "../src/modules/push/service";
 
 /** Heuristic parse with a controllable confidence, standing in for a confident LLM. */
 export class FakeAnalyzer implements PurchaseAnalyzer {
@@ -21,7 +23,7 @@ export class FakeAnalyzer implements PurchaseAnalyzer {
   }
 }
 
-export type TestApp = { app: FastifyInstance; db: Database; analyzer: FakeAnalyzer; close: () => Promise<void> };
+export type TestApp = { app: FastifyInstance; db: Database; analyzer: FakeAnalyzer; notifier: FakeNotifier; close: () => Promise<void> };
 
 export async function createTestApp(paypal: PayPalGateway = new MockPayPalGateway()): Promise<TestApp> {
   const config = loadConfig({
@@ -36,9 +38,20 @@ export async function createTestApp(paypal: PayPalGateway = new MockPayPalGatewa
   const db = await createDatabase(config.database);
   await runMigrations(db);
   const analyzer = new FakeAnalyzer();
-  const app = await buildApp({ config, db, analyzer, paypal, logger: false });
+  const notifier = new FakeNotifier();
+  const app = await buildApp({ config, db, analyzer, paypal, notifier, agentModel: new OfflineShoppingAgent(), logger: false });
   await app.ready();
-  return { app, db, analyzer, close: async () => { await app.close(); await db.close(); } };
+  return { app, db, analyzer, notifier, close: async () => { await app.close(); await db.close(); } };
+}
+
+/** Records push notifications instead of sending them. */
+export class FakeNotifier implements Notifier {
+  readonly enabled = true;
+  readonly publicKey = "test-public-key";
+  readonly sent: { userId: string; message: PushMessage }[] = [];
+  async notifyUser(userId: string, message: PushMessage) {
+    this.sent.push({ userId, message });
+  }
 }
 
 let counter = 0;

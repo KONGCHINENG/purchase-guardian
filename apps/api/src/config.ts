@@ -25,10 +25,22 @@ const EnvSchema = z
     CORS_ORIGINS: z.string().optional(),
     TRUST_PROXY: bool.default(true),
 
-    AI_PROVIDER: z.enum(["anthropic", "heuristic"]).optional(),
+    AI_PROVIDER: z.enum(["nvidia", "anthropic", "heuristic"]).optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
     ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
+    NVIDIA_API_KEY: z.string().optional(),
+    NVIDIA_MODEL: z.string().default("meta/llama-3.3-70b-instruct"),
+    NVIDIA_BASE_URL: z.string().url().default("https://integrate.api.nvidia.com/v1"),
     AI_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+
+    /** Web Push (generate with: npx web-push generate-vapid-keys). Push is disabled when unset. */
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_SUBJECT: z.string().default("mailto:admin@example.com"),
+
+    CHECKOUT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+    /** Seeds the built-in demo merchant (store + AI shopping agent). */
+    DEMO_STORE_ENABLED: bool.default(true),
 
     PAYPAL_ENV: z.enum(["sandbox", "live", "mock"]).default("mock"),
     PAYPAL_CLIENT_ID: z.string().optional(),
@@ -39,6 +51,9 @@ const EnvSchema = z
     RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().positive().default(10),
   })
   .superRefine((env, ctx) => {
+    if (env.AI_PROVIDER === "nvidia" && !env.NVIDIA_API_KEY) {
+      ctx.addIssue({ code: "custom", path: ["NVIDIA_API_KEY"], message: "NVIDIA_API_KEY is required when AI_PROVIDER=nvidia" });
+    }
     if (env.PAYPAL_ENV !== "mock" && (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_CLIENT_SECRET)) {
       ctx.addIssue({ code: "custom", path: ["PAYPAL_CLIENT_ID"], message: "PayPal credentials are required unless PAYPAL_ENV=mock" });
     }
@@ -75,11 +90,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     corsOrigins: (e.CORS_ORIGINS ?? e.WEB_URL).split(",").map((o) => o.trim().replace(/\/$/, "")).filter(Boolean),
     trustProxy: e.TRUST_PROXY,
     ai: {
-      provider: e.AI_PROVIDER ?? (e.ANTHROPIC_API_KEY ? "anthropic" : "heuristic"),
-      apiKey: e.ANTHROPIC_API_KEY,
-      model: e.ANTHROPIC_MODEL,
+      provider: e.AI_PROVIDER ?? (e.NVIDIA_API_KEY ? "nvidia" : e.ANTHROPIC_API_KEY ? "anthropic" : "heuristic"),
       timeoutMs: e.AI_TIMEOUT_MS,
+      anthropic: { apiKey: e.ANTHROPIC_API_KEY, model: e.ANTHROPIC_MODEL },
+      nvidia: { apiKey: e.NVIDIA_API_KEY, model: e.NVIDIA_MODEL, baseUrl: e.NVIDIA_BASE_URL },
     },
+    push:
+      e.VAPID_PUBLIC_KEY && e.VAPID_PRIVATE_KEY
+        ? { publicKey: e.VAPID_PUBLIC_KEY, privateKey: e.VAPID_PRIVATE_KEY, subject: e.VAPID_SUBJECT }
+        : null,
+    checkoutSessionTtlMinutes: e.CHECKOUT_SESSION_TTL_MINUTES,
+    demoStoreEnabled: e.DEMO_STORE_ENABLED,
     paypal: {
       environment: e.PAYPAL_ENV,
       clientId: e.PAYPAL_CLIENT_ID,

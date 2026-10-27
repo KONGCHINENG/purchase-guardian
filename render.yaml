@@ -1,18 +1,30 @@
-# Render Blueprint: managed Postgres + API + web.  Dashboard → New → Blueprint → this repo.
+# Render Blueprint: managed Postgres + API + web (PWA).
+# Dashboard → New → Blueprint → select this repo. Fill the `sync: false` values when prompted.
+#
+# Region: Oregon keeps latency low for US-based judges and PayPal's US endpoints.
+# Static assets (/_next/static, icons) are served with immutable cache headers; put the
+# web service behind Cloudflare (free plan, proxied DNS) for global edge caching.
+
 databases:
   - name: guardian-db
-    plan: free
+    region: oregon
+    # The free plan expires after 30 days, which is before judging ends (Dec 15).
+    # basic-256mb keeps data for the whole judging window.
+    plan: basic-256mb
     databaseName: guardian
     user: guardian
+    postgresMajorVersion: "17"
 
 services:
   - type: web
     name: guardian-api
     runtime: node
-    plan: free
+    region: oregon
+    plan: starter
     buildCommand: npm ci && npm run build -w @guardian/api
     startCommand: npm run start -w @guardian/api
     healthCheckPath: /health/ready
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
@@ -21,7 +33,15 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: WEB_URL
-        sync: false # e.g. https://guardian-web.onrender.com
+        sync: false # https://guardian-web.onrender.com (or your custom domain)
+      - key: CORS_ORIGINS
+        sync: false # same as WEB_URL
+      # AI: NVIDIA NIM (OpenAI-compatible). Anthropic is also supported via ANTHROPIC_API_KEY.
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_MODEL
+        value: meta/llama-3.3-70b-instruct
+      # PayPal Sandbox credentials (developer.paypal.com → Apps & Credentials)
       - key: PAYPAL_ENV
         value: sandbox
       - key: PAYPAL_CLIENT_ID
@@ -30,15 +50,26 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
-      - key: ANTHROPIC_API_KEY
+      # Web Push (npx web-push generate-vapid-keys)
+      - key: VAPID_PUBLIC_KEY
         sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false # mailto:you@example.com (contact address push services can reach)
+      - key: DEMO_STORE_ENABLED
+        value: "true"
 
   - type: web
     name: guardian-web
     runtime: node
-    plan: free
+    region: oregon
+    plan: starter
     buildCommand: npm ci && npm run build -w @guardian/web
     startCommand: npm run start -w @guardian/web
+    autoDeploy: true
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: API_URL
-        sync: false # e.g. https://guardian-api.onrender.com
+        sync: false # https://guardian-api.onrender.com

@@ -165,4 +165,55 @@ CREATE INDEX idx_audit_events_request           ON audit_events (purchase_reques
 CREATE INDEX idx_refresh_tokens_user            ON refresh_tokens (user_id);
 `,
   },
+  {
+    id: "002_checkout_sessions_and_push",
+    sql: /* sql */ `
+-- Merchants (stores or AI agents' platforms) that send shoppers through Guardian Checkout.
+CREATE TABLE merchants (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                 TEXT NOT NULL,
+  slug                 TEXT NOT NULL UNIQUE,
+  api_key_hash         TEXT NOT NULL UNIQUE,
+  -- Exact origins allowed in return/cancel URLs: prevents Guardian becoming an open redirect.
+  allowed_return_origins JSONB NOT NULL DEFAULT '[]',
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- A merchant-initiated payment that the shopper confirms through Guardian before PayPal.
+CREATE TABLE checkout_sessions (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  merchant_id         UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+  user_id             UUID REFERENCES users(id) ON DELETE SET NULL,
+  purchase_request_id UUID UNIQUE REFERENCES purchase_requests(id) ON DELETE SET NULL,
+  status              TEXT NOT NULL DEFAULT 'open' CHECK (status IN (
+                        'open', 'pending_approval', 'approved', 'blocked', 'paying',
+                        'completed', 'cancelled', 'expired', 'failed')),
+  merchant_reference  TEXT,
+  items               JSONB NOT NULL,
+  category            TEXT NOT NULL,
+  amount_cents        BIGINT NOT NULL CHECK (amount_cents > 0),
+  currency            CHAR(3) NOT NULL,
+  return_url          TEXT NOT NULL,
+  cancel_url          TEXT NOT NULL,
+  agent_context       JSONB,
+  expires_at          TIMESTAMPTZ NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_checkout_sessions_merchant ON checkout_sessions (merchant_id, created_at DESC);
+CREATE INDEX idx_checkout_sessions_user     ON checkout_sessions (user_id, created_at DESC);
+
+-- Web Push subscriptions (one per installed device/browser).
+CREATE TABLE push_subscriptions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint   TEXT NOT NULL UNIQUE,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_push_subscriptions_user ON push_subscriptions (user_id);
+`,
+  },
 ];

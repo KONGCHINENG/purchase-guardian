@@ -9,9 +9,12 @@ import { AppError } from "./lib/errors";
 import { verifyAccessToken } from "./lib/security";
 import { approvalRoutes } from "./modules/approvals/routes";
 import { authRoutes } from "./modules/auth/routes";
+import { checkoutSessionRoutes } from "./modules/checkout-sessions/routes";
+import { demoStoreRoutes } from "./modules/demo-store/routes";
 import { paymentRoutes } from "./modules/payments/routes";
 import { policyRoutes } from "./modules/policies/routes";
 import { purchaseRequestRoutes } from "./modules/purchase-requests/routes";
+import { pushRoutes } from "./modules/push/routes";
 
 export type BuildAppOptions = Omit<AppContext, "log"> & { logger?: boolean | object };
 
@@ -89,7 +92,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
   app.get("/health/ready", { config: { rateLimit: false } }, async (_req, reply) => {
     try {
       await ctx.db.ping();
-      return { status: "ready", ai: config.ai.provider, paypal: ctx.paypal.environment };
+      return { status: "ready", ai: config.ai.provider, agent: ctx.agentModel.name, paypal: ctx.paypal.environment, push: ctx.notifier.enabled };
     } catch {
       return reply.status(503).send({ status: "unavailable" });
     }
@@ -102,6 +105,9 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
       await v1.register(async (scope) => purchaseRequestRoutes(scope, ctx));
       await v1.register(async (scope) => approvalRoutes(scope, ctx));
       await v1.register(async (scope) => paymentRoutes(scope, ctx));
+      await v1.register(async (scope) => checkoutSessionRoutes(scope, ctx));
+      await v1.register(async (scope) => pushRoutes(scope, ctx));
+      if (config.demoStoreEnabled) await v1.register(async (scope) => demoStoreRoutes(scope, ctx));
     },
     { prefix: "/api/v1" },
   );

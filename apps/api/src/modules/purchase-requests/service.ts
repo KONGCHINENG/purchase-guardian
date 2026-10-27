@@ -98,7 +98,23 @@ async function analyzeAndDecide(ctx: AppContext, userId: string, requestId: stri
     return;
   }
 
-  await ctx.db.transaction(async (tx) => {
+  await applyPolicyDecision(ctx, userId, requestId, analysis, meta);
+}
+
+/**
+ * The single decision path shared by chat requests and merchant checkout sessions:
+ * lock the user's budget, evaluate policy, persist the decision, open an approval if
+ * needed, and notify the user's devices. Returns the decision for the caller to act on.
+ */
+export async function applyPolicyDecision(
+  ctx: AppContext,
+  userId: string,
+  requestId: string,
+  analysis: AiAnalysis,
+  meta: RequestMeta,
+  notification?: { title: string; body: string; url: string },
+): Promise<{ decision: "approve" | "require_approval" | "block"; explanation: string }> {
+  const outcome = await ctx.db.transaction(async (tx) => {
     await lockUserBudget(tx, userId);
     const policyRow = await getPolicyRow(tx, userId);
     const snapshot = toSnapshot(policyRow);
@@ -199,5 +215,19 @@ async function analyzeAndDecide(ctx: AppContext, userId: string, requestId: stri
         meta,
       });
     }
+    return { decision: result.decision, explanation: result.explanation };
   });
+
+  if (outcome.decision === "require_approval") {
+    const { intent } = analysis;
+    // Fire-and-forget: a slow or failing push service must never block the decision.
+    void ctx.notifier
+      .notifyUser(userId, notification ?? {
+        title: "Approve this purchase?",
+        body: `${intent.itemName}${intent.merchantName ? ` at ${intent.merchantName}` : ""}: ${outcome.explanation.replace(/^Needs your approval: /, "")}`,
+        url: "/approvals",
+      })
+      .catch((err: unknown) => ctx.log.warn({ err, requestId }, "Push notification failed"));
+  }
+  return outcome;
 }

@@ -73,6 +73,38 @@ Example (`POST /purchase-requests`):
 | POST | `/payments/paypal/orders/:id/capture` | After buyer approval. Idempotent. 409 `ORDER_NOT_APPROVED`, `PAYMENT_DECLINED` |
 | POST | `/webhooks/paypal` | PayPal → us. Signature verified via PayPal API (`PAYPAL_WEBHOOK_ID`). Handles `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED/DENIED/DECLINED` |
 
+## Guardian Checkout
+
+Full guide: [guardian-checkout.md](guardian-checkout.md).
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/checkout-sessions` | merchant key | Create a session → `checkoutUrl` |
+| GET | `/checkout-sessions/:id` | merchant key | Outcome only (status, PayPal ids) |
+| GET | `/checkout-sessions/:id/view` | shopper | Poll while waiting for approval |
+| POST | `/checkout-sessions/:id/claim` | shopper | Bind to shopper + run their policy (idempotent) |
+| POST | `/checkout-sessions/:id/pay` | shopper | Create/reuse PayPal order → `approvalUrl` |
+| POST | `/checkout-sessions/:id/complete` | shopper | Capture after PayPal return → `redirectUrl` |
+| POST | `/checkout-sessions/:id/cancel` | shopper | Cancel → `redirectUrl` |
+
+## Push (phone approvals)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/push/config` | `{ enabled, publicKey }` (VAPID) |
+| POST | `/push/subscriptions` | Browser `PushSubscription` JSON |
+| DELETE | `/push/subscriptions` | `{ endpoint }` |
+| POST | `/push/test` | Sends a test notification to your devices |
+
+## Demo store (public, rate-limited)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/demo-store/products` | Catalog |
+| POST | `/demo-store/checkout` | `{ items: [{ sku, quantity }] }` → Guardian `checkoutUrl` |
+| POST | `/demo-store/agent` | `{ goal }` → agent trace, cart, `checkout` (10/min per IP) |
+| GET | `/demo-store/sessions/:id` | Store's view of the outcome |
+
 ## Health
 
 `GET /health` (liveness) · `GET /health/ready` (DB reachable; reports AI provider and PayPal env).

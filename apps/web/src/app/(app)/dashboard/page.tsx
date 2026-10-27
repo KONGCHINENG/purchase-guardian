@@ -4,6 +4,7 @@ import type { Paginated, PurchaseRequestDetailDto, PurchaseRequestDto, UsageDto 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { DecisionCard } from "@/components/decision-card";
+import { DeviceCard } from "@/components/pwa";
 import { UsageMeter } from "@/components/usage-meter";
 import { Alert, Button, Card, Spinner } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api-client";
@@ -101,7 +102,7 @@ export default function GuardianPage() {
           <div ref={bottomRef} />
         </div>
 
-        <form onSubmit={submit} className="sticky bottom-4 mt-6">
+        <form onSubmit={submit} className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] mt-6 sm:bottom-4">
           {error && (
             <div className="mb-2">
               <Alert>{error}</Alert>
@@ -130,7 +131,8 @@ export default function GuardianPage() {
         </form>
       </section>
 
-      <aside className="space-y-4 lg:sticky lg:top-22 lg:self-start">
+      {/* On phones the budget and device setup come first; on desktop they sit beside the chat. */}
+      <aside className="order-first space-y-4 lg:sticky lg:top-22 lg:order-none lg:self-start">
         <UsageMeter usage={usage.data} />
         {usage.data && usage.data.pendingApprovals > 0 && (
           <Link href="/approvals" className="block rounded-[var(--radius-card)] bg-warn-tint px-5 py-4 text-sm text-warn hover:opacity-90">
@@ -138,6 +140,11 @@ export default function GuardianPage() {
             for your approval →
           </Link>
         )}
+        <DeviceCard />
+        <Link href="/store" className="block rounded-[var(--radius-card)] border border-line bg-surface p-5 text-sm hover:border-brand">
+          <p className="font-medium text-ink">🛒 Try the demo store →</p>
+          <p className="mt-1 text-ink-soft">Let an AI agent shop at Northwind Market. Its checkout comes through Guardian before PayPal.</p>
+        </Link>
         <Card className="p-5 text-sm text-ink-soft">
           <p className="font-medium text-ink">How Guardian decides</p>
           <ol className="mt-2 list-decimal space-y-1 pl-4">

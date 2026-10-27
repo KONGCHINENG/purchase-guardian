@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Offline · Purchase Guardian</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; min-height: 100dvh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #f6f7f5; color: #141a17; text-align: center; padding: 24px; }
+      @media (prefers-color-scheme: dark) { body { background: #0e1210; color: #eef2ef; } }
+      p { color: #7d8782; max-width: 28ch; margin: 8px auto 20px; }
+      button { font: inherit; border: 0; border-radius: 10px; padding: 10px 18px; background: #0f7a55; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>You're offline</h1>
+      <p>Guardian needs a connection to check purchases and talk to PayPal. Nothing is paid while you're offline.</p>
+      <button onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

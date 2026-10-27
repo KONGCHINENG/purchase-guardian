@@ -7,7 +7,8 @@ export type AiAnalysis = {
   riskFlags: RiskFlag[];
   /** One-sentence restatement of what the user asked for, shown in the UI. */
   summary: string;
-  provider: "anthropic" | "heuristic";
+  /** "merchant" = structured cart data supplied by a merchant checkout session (no free text to interpret). */
+  provider: "anthropic" | "nvidia" | "heuristic" | "merchant";
   model: string;
 };
 

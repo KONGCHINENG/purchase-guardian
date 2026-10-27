@@ -244,6 +244,112 @@ export type Paginated<T> = { items: T[]; nextCursor: string | null };
 export type ApiErrorBody = { error: { code: string; message: string; details?: unknown } };
 
 /* -------------------------------------------------------------------------- */
+/* Guardian Checkout (merchant-initiated sessions)                            */
+/* -------------------------------------------------------------------------- */
+
+export const CheckoutItemSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  sku: z.string().trim().max(64).optional(),
+  quantity: z.number().int().min(1).max(100),
+  unitAmountCents: z.number().int().min(1).max(10_000_000),
+});
+export type CheckoutItem = z.infer<typeof CheckoutItemSchema>;
+
+export const AgentContextSchema = z.object({
+  agentName: z.string().trim().min(1).max(80),
+  goal: z.string().trim().max(500),
+  reasoning: z.string().trim().max(1500),
+});
+export type AgentContext = z.infer<typeof AgentContextSchema>;
+
+export const CreateCheckoutSessionInputSchema = z.object({
+  items: z.array(CheckoutItemSchema).min(1).max(50),
+  currency: CurrencySchema,
+  category: CategorySchema,
+  merchantReference: z.string().trim().max(120).optional(),
+  returnUrl: z.string().url().max(2000),
+  cancelUrl: z.string().url().max(2000),
+  agentContext: AgentContextSchema.optional(),
+});
+export type CreateCheckoutSessionInput = z.infer<typeof CreateCheckoutSessionInputSchema>;
+
+export const CHECKOUT_SESSION_STATUSES = [
+  "open",
+  "pending_approval",
+  "approved",
+  "blocked",
+  "paying",
+  "completed",
+  "cancelled",
+  "expired",
+  "failed",
+] as const;
+export type CheckoutSessionStatus = (typeof CHECKOUT_SESSION_STATUSES)[number];
+
+/** What the shopper sees on the Guardian checkout page. */
+export type CheckoutSessionDto = {
+  id: string;
+  status: CheckoutSessionStatus;
+  merchant: { name: string; slug: string };
+  items: CheckoutItem[];
+  category: Category;
+  amountCents: number;
+  currency: Currency;
+  merchantReference: string | null;
+  agentContext: AgentContext | null;
+  expiresAt: string;
+  request: PurchaseRequestDto | null;
+  /** Set once the session is final: where to send the browser back to the merchant. */
+  redirectUrl: string | null;
+};
+
+/** What the merchant's server sees. No policy details about the shopper are exposed. */
+export type MerchantCheckoutSessionDto = {
+  id: string;
+  status: CheckoutSessionStatus;
+  amountCents: number;
+  currency: Currency;
+  merchantReference: string | null;
+  checkoutUrl: string;
+  paypalOrderId: string | null;
+  captureId: string | null;
+  expiresAt: string;
+  createdAt: string;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Demo store + shopping agent                                                */
+/* -------------------------------------------------------------------------- */
+
+export type StoreProduct = {
+  sku: string;
+  name: string;
+  description: string;
+  category: Category;
+  priceCents: number;
+  emoji: string;
+  tags: string[];
+};
+
+export type AgentStep =
+  | { kind: "thought"; text: string }
+  | { kind: "tool"; name: string; input: unknown; output: unknown };
+
+export type AgentRunDto = {
+  agent: string;
+  steps: AgentStep[];
+  message: string;
+  cart: { sku: string; name: string; quantity: number; unitAmountCents: number }[];
+  checkout: { sessionId: string; checkoutUrl: string } | null;
+};
+
+export const AgentRunInputSchema = z.object({ goal: z.string().trim().min(3).max(500) });
+
+export const StoreCheckoutInputSchema = z.object({
+  items: z.array(z.object({ sku: z.string().min(1).max(64), quantity: z.number().int().min(1).max(20) })).min(1).max(20),
+});
+
+/* -------------------------------------------------------------------------- */
 /* Helpers shared by API, policy engine and UI                                */
 /* -------------------------------------------------------------------------- */
 

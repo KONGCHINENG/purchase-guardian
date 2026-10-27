@@ -47,6 +47,12 @@
 | AI | Claude Opus 5.5 via `messages.parse` + Zod structured output, effort `low` | One bounded extraction call per request. Output is re-validated with the strict shared schema, then merged with deterministic risk signals. |
 | Payments | PayPal Orders v2, intent `CAPTURE`, redirect approval | Buyer approves in PayPal; we capture server-side. `PayPal-Request-Id` on every mutation. |
 
+## Guardian Checkout, agent and phone
+
+- **Guardian Checkout** (`modules/checkout-sessions`) puts a 3-D-Secure-style redirect step in front of PayPal: merchant session → `/pay/:id` → policy → PayPal → capture → merchant return URL. It reuses the exact decision path below (`applyPolicyDecision`). See [guardian-checkout.md](guardian-checkout.md).
+- **Shopping agent** (`modules/demo-store/agent.ts`) is an NVIDIA NIM tool-calling loop (OpenAI-compatible API, `openai` SDK). Its only "spend" tool creates a checkout session. When no key is set, an offline planner produces the same trace.
+- **Phone (PWA)** is the web app with a manifest, service worker and Web Push (VAPID, `web-push`). `applyPolicyDecision` notifies the user's devices on `require_approval`, and the waiting checkout page polls and continues on approval.
+
 ## Request lifecycle
 
 ```

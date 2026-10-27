@@ -24,7 +24,14 @@ type Gate =
  * PayPal, outside the transaction, with a stable PayPal-Request-Id so a retry after
  * a crash or timeout returns the same PayPal order instead of creating a second one.
  */
-export async function createOrder(ctx: AppContext, userId: string, purchaseRequestId: string, meta: RequestMeta): Promise<OrderDto> {
+export async function createOrder(
+  ctx: AppContext,
+  userId: string,
+  purchaseRequestId: string,
+  meta: RequestMeta,
+  /** Where PayPal sends the buyer back; defaults to the in-app checkout pages. */
+  redirect?: { returnUrl: string; cancelUrl: string; brandName?: string },
+): Promise<OrderDto> {
   const gate = await ctx.db.transaction<Gate>(async (tx) => {
     await lockUserBudget(tx, userId);
     await expireStaleApprovals(tx, userId);
@@ -123,8 +130,9 @@ export async function createOrder(ctx: AppContext, userId: string, purchaseReque
       description: gate.description,
       amountCents: order.amount_cents,
       currency: order.currency.trim(),
-      returnUrl: `${ctx.config.webUrl}/checkout/return?orderId=${order.id}`,
-      cancelUrl: `${ctx.config.webUrl}/checkout/cancel?orderId=${order.id}`,
+      returnUrl: redirect?.returnUrl ?? `${ctx.config.webUrl}/checkout/return?orderId=${order.id}`,
+      cancelUrl: redirect?.cancelUrl ?? `${ctx.config.webUrl}/checkout/cancel?orderId=${order.id}`,
+      brandName: redirect?.brandName,
     });
     return await ctx.db.transaction(async (tx) => {
       const { rows } = await tx.query<OrderRow>(

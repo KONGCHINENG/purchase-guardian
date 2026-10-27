@@ -40,9 +40,9 @@ export default function LandingPage() {
           <Link href="/register" className="rounded-[10px] bg-brand px-5 py-3 font-medium text-white hover:bg-brand-strong dark:text-canvas">
             Create your guardian
           </Link>
-          <a href="#how" className="rounded-[10px] border border-line bg-surface px-5 py-3 font-medium text-ink hover:bg-sunken">
-            How it works
-          </a>
+          <Link href="/store" className="rounded-[10px] border border-line bg-surface px-5 py-3 font-medium text-ink hover:bg-sunken">
+            Try the demo store
+          </Link>
         </div>
       </section>
 

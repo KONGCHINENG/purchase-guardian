@@ -4,6 +4,8 @@ import { loadConfig } from "./config";
 import { createDatabase } from "./db/index";
 import { runMigrations } from "./db/migrate";
 import { createAnalyzer } from "./modules/ai/index";
+import { createShoppingAgent } from "./modules/demo-store/agent";
+import { createNotifier } from "./modules/push/service";
 
 const config = loadConfig();
 const db = await createDatabase(config.database);
@@ -14,10 +16,18 @@ const app = await buildApp({
   db,
   analyzer: createAnalyzer(config.ai),
   paypal: createPayPalGateway(config.paypal),
+  notifier: createNotifier(db, config.push),
+  agentModel: createShoppingAgent(config.ai),
 });
 
 app.log.info(
-  { ai: config.ai.provider, model: config.ai.provider === "anthropic" ? config.ai.model : undefined, paypal: config.paypal.environment, db: db.kind },
+  {
+    ai: config.ai.provider,
+    model: config.ai.provider === "heuristic" ? undefined : config.ai[config.ai.provider].model,
+    paypal: config.paypal.environment,
+    push: Boolean(config.push),
+    db: db.kind,
+  },
   "Purchase Guardian API starting",
 );
 

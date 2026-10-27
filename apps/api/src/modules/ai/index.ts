@@ -2,14 +2,20 @@ import { PurchaseIntentSchema, type RiskFlag } from "@guardian/shared";
 import type { Config } from "../../config";
 import { AnthropicAnalyzer } from "./anthropic";
 import { detectRiskSignals, HEURISTIC_MAX_CONFIDENCE, HeuristicAnalyzer } from "./heuristic";
+import { NvidiaAnalyzer } from "./nvidia";
 import { AiRefusedError, type AiAnalysis, type AnalysisContext, type PurchaseAnalyzer } from "./types";
 
 export * from "./types";
 
 export function createAnalyzer(config: Config["ai"]): PurchaseAnalyzer {
-  return config.provider === "anthropic"
-    ? new AnthropicAnalyzer({ apiKey: config.apiKey, model: config.model, timeoutMs: config.timeoutMs })
-    : new HeuristicAnalyzer();
+  switch (config.provider) {
+    case "nvidia":
+      return new NvidiaAnalyzer({ ...config.nvidia, apiKey: config.nvidia.apiKey!, timeoutMs: config.timeoutMs });
+    case "anthropic":
+      return new AnthropicAnalyzer({ ...config.anthropic, timeoutMs: config.timeoutMs });
+    default:
+      return new HeuristicAnalyzer();
+  }
 }
 
 /**
