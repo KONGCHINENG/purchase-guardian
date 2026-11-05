@@ -169,7 +169,7 @@ export async function claimSession(ctx: AppContext, userId: string, id: string, 
     const { rows } = await tx.query<SessionRow>(`${SESSION_SELECT} WHERE s.id = $1 FOR UPDATE OF s`, [id]);
     const session = rows[0];
     if (!session || (session.user_id && session.user_id !== userId)) throw notFound("Checkout session");
-    if (session.user_id) return { session, fresh: false };
+    if (session.user_id || FINAL.has(session.status)) return { session, fresh: false };
     if (new Date(session.expires_at) <= new Date()) {
       await tx.query(`UPDATE checkout_sessions SET status = 'expired', updated_at = now() WHERE id = $1`, [id]);
       throw conflict("SESSION_EXPIRED", "This checkout link has expired. Return to the store and try again.");
@@ -223,11 +223,20 @@ export async function claimSession(ctx: AppContext, userId: string, id: string, 
       provider: "merchant",
       model: "checkout-session",
     };
-    await applyPolicyDecision(ctx, userId, s.purchase_request_id!, analysis, meta, {
-      title: `Approve ${formatMoney(s.amount_cents, s.currency.trim())} at ${s.merchant_name}?`,
-      body: s.agent_context ? `${s.agent_context.agentName}: "${s.agent_context.goal}"` : `${analysis.intent.itemName}`,
-      url: `/pay/${s.id}`,
-    });
+    try {
+      await applyPolicyDecision(ctx, userId, s.purchase_request_id!, analysis, meta, {
+        title: `Approve ${formatMoney(s.amount_cents, s.currency.trim())} at ${s.merchant_name}?`,
+        body: s.agent_context ? `${s.agent_context.agentName}: "${s.agent_context.goal}"` : `${analysis.intent.itemName}`,
+        url: `/pay/${s.id}`,
+      });
+    } catch (error) {
+      // Claims only run once, so a checkout left undecided here would wait forever. Fail it closed.
+      ctx.log.error({ err: error, sessionId: s.id }, "Policy decision failed for checkout session");
+      await ctx.db.transaction(async (tx) => {
+        await tx.query(`UPDATE purchase_requests SET status = 'failed', updated_at = now() WHERE id = $1`, [s.purchase_request_id]);
+        await recordAudit(tx, { userId, purchaseRequestId: s.purchase_request_id, actor: "system", action: "checkout.decision_failed", outcome: "failed", metadata: { sessionId: id }, meta });
+      });
+    }
   }
   return viewSession(ctx, userId, id);
 }
@@ -266,6 +275,11 @@ export async function cancelSession(ctx: AppContext, userId: string, id: string,
     await ctx.db.transaction(async (tx) => {
       await tx.query(`UPDATE checkout_sessions SET status = 'cancelled', updated_at = now() WHERE id = $1`, [id]);
       if (session.purchase_request_id) {
+        // Void the order too: the PayPal tab may still be open, and approving there must not charge.
+        await tx.query(
+          `UPDATE paypal_orders SET status = 'voided', updated_at = now() WHERE purchase_request_id = $1 AND status IN ('creating', 'created', 'approved')`,
+          [session.purchase_request_id],
+        );
         await tx.query(
           `UPDATE approvals SET status = 'rejected', rejected_at = now() WHERE purchase_request_id = $1 AND status = 'pending'`,
           [session.purchase_request_id],
@@ -325,15 +339,34 @@ const REQUEST_TO_SESSION: Record<string, CheckoutSessionStatus> = {
  */
 async function syncStatus(ctx: AppContext, session: SessionRow): Promise<CheckoutSessionStatus> {
   let status: CheckoutSessionStatus = session.status;
-  if (session.status !== "cancelled" && session.purchase_request_id) {
+  if (session.purchase_request_id) {
     const { rows } = await ctx.db.query<{ status: string }>(`SELECT status FROM purchase_requests WHERE id = $1`, [session.purchase_request_id]);
-    status = REQUEST_TO_SESSION[rows[0]?.status ?? "failed"] ?? "failed";
+    const derived = REQUEST_TO_SESSION[rows[0]?.status ?? "failed"] ?? "failed";
+    // Cancelled stays cancelled, unless a capture already in flight finished: never hide real money.
+    if (session.status !== "cancelled" || derived === "completed") status = derived;
   }
-  if (!FINAL.has(status) && status !== "paying" && new Date(session.expires_at) <= new Date()) status = "expired";
+  if (!FINAL.has(status) && status !== "paying" && new Date(session.expires_at) <= new Date()) {
+    status = "expired";
+    await closeExpiredRequest(ctx, session);
+  }
   if (status !== session.status) {
     await ctx.db.query(`UPDATE checkout_sessions SET status = $2, updated_at = now() WHERE id = $1 AND status <> 'completed'`, [session.id, status]);
   }
   return status;
+}
+
+/** An expired checkout can't continue, so its approval must not stay open in the shopper's queue. */
+async function closeExpiredRequest(ctx: AppContext, session: SessionRow): Promise<void> {
+  if (!session.purchase_request_id || !session.user_id) return;
+  const requestId = session.purchase_request_id;
+  await ctx.db.transaction(async (tx) => {
+    await tx.query(`UPDATE approvals SET status = 'expired' WHERE purchase_request_id = $1 AND status = 'pending'`, [requestId]);
+    const { rows } = await tx.query<{ id: string }>(
+      `UPDATE purchase_requests SET status = 'expired', updated_at = now() WHERE id = $1 AND status IN ('analyzing', 'pending_approval', 'approved') RETURNING id`,
+      [requestId],
+    );
+    if (rows[0]) await recordAudit(tx, { userId: session.user_id, purchaseRequestId: requestId, actor: "system", action: "checkout.expired", outcome: "expired", metadata: { sessionId: session.id } });
+  });
 }
 
 async function toDto(ctx: AppContext, session: SessionRow, status: CheckoutSessionStatus): Promise<CheckoutSessionDto> {

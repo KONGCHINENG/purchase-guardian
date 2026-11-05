@@ -50,8 +50,8 @@ export default function StorePage() {
         <section>
           <h2 className="mb-3 font-serif text-lg font-semibold">Shop the aisles</h2>
           {products.length === 0 ? (
-            <div className="flex justify-center py-12 text-[#8a7a68]">
-              <Spinner className="size-5" />
+            <div className="flex justify-center py-12 text-[#6f6153] dark:text-[#b3a595]">
+              {error ? <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p> : <Spinner className="size-5" />}
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -61,12 +61,13 @@ export default function StorePage() {
                     {p.emoji}
                   </div>
                   <p className="mt-2 text-sm font-medium leading-snug">{p.name}</p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-[#8a7a68]">{p.description}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-[#6f6153] dark:text-[#b3a595]">{p.description}</p>
                   <div className="mt-auto flex items-center justify-between pt-3">
                     <span className="tabular text-sm font-semibold">{money(p.priceCents)}</span>
                     <button
                       onClick={() => add(p.sku)}
-                      className="rounded-full bg-[#2b2118] px-3 py-1 text-xs font-medium text-white hover:bg-[#c2541b] dark:bg-[#f3ebe1] dark:text-[#1a1511]"
+                      aria-label={cart[p.sku] ? `${p.name}: ${cart[p.sku]} in cart, add one more` : `Add ${p.name} to cart`}
+                      className="min-h-8 rounded-full bg-[#2b2118] px-3 py-1 text-xs font-medium text-white hover:bg-[#c2541b] dark:bg-[#f3ebe1] dark:text-[#1a1511]"
                     >
                       {cart[p.sku] ? `In cart · ${cart[p.sku]}` : "Add"}
                     </button>
@@ -82,7 +83,7 @@ export default function StorePage() {
         <div className="rounded-2xl border border-[#eadfce] bg-white p-5 dark:border-[#3a2f25] dark:bg-[#231c16]">
           <h2 className="font-serif text-lg font-semibold">Your cart</h2>
           {lines.length === 0 ? (
-            <p className="mt-2 text-sm text-[#8a7a68]">Add something, or let the shopping agent fill it.</p>
+            <p className="mt-2 text-sm text-[#6f6153] dark:text-[#b3a595]">Add something, or let the shopping agent fill it.</p>
           ) : (
             <ul className="mt-3 space-y-2 text-sm">
               {lines.map(({ product, quantity }) => (
@@ -91,11 +92,11 @@ export default function StorePage() {
                     {product.emoji} {product.name}
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <button aria-label="Remove one" onClick={() => add(product.sku, -1)} className="size-6 rounded-full border border-[#eadfce] dark:border-[#3a2f25]">
+                    <button aria-label={`Remove one ${product.name}`} onClick={() => add(product.sku, -1)} className="size-8 rounded-full border border-[#eadfce] dark:border-[#3a2f25]">
                       −
                     </button>
                     <span className="tabular w-4 text-center">{quantity}</span>
-                    <button aria-label="Add one" onClick={() => add(product.sku)} className="size-6 rounded-full border border-[#eadfce] dark:border-[#3a2f25]">
+                    <button aria-label={`Add one ${product.name}`} onClick={() => add(product.sku)} className="size-8 rounded-full border border-[#eadfce] dark:border-[#3a2f25]">
                       +
                     </button>
                   </span>
@@ -104,7 +105,7 @@ export default function StorePage() {
             </ul>
           )}
           <div className="mt-4 flex items-baseline justify-between border-t border-[#eadfce] pt-3 dark:border-[#3a2f25]">
-            <span className="text-sm text-[#8a7a68]">Total</span>
+            <span className="text-sm text-[#6f6153] dark:text-[#b3a595]">Total</span>
             <span className="tabular text-xl font-semibold">{money(total)}</span>
           </div>
           <button
@@ -116,8 +117,8 @@ export default function StorePage() {
             Pay with <span className="font-bold italic text-[#003087]">Pay</span>
             <span className="-ml-1.5 font-bold italic text-[#0070e0]">Pal</span>
           </button>
-          <p className="mt-2 text-center text-[11px] text-[#8a7a68]">🛡️ Protected by Purchase Guardian</p>
-          {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
+          <p className="mt-2 text-center text-[11px] text-[#6f6153] dark:text-[#b3a595]">🛡️ Protected by Purchase Guardian</p>
+          {error && products.length > 0 && <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">{error}</p>}
         </div>
       </aside>
     </main>
@@ -156,9 +157,9 @@ function AgentPanel() {
         <input
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          placeholder="e.g. Restock kitchen basics under $30"
+          placeholder="What do you need?"
           aria-label="Shopping goal"
-          className="h-11 min-w-0 flex-1 rounded-full bg-white/10 px-4 text-sm text-white placeholder:text-[#a8988a] focus:bg-white/15 focus:outline-none"
+          className="h-11 min-w-0 flex-1 rounded-full bg-white/10 px-4 text-sm text-white placeholder:text-[#a8988a] focus:bg-white/15 focus-visible:outline-[#e9a77c]"
         />
         <button disabled={running || goal.trim().length < 3} className="flex h-11 items-center gap-2 rounded-full bg-[#c2541b] px-5 text-sm font-medium text-white hover:bg-[#d8652a] disabled:opacity-50">
           {running ? <Spinner /> : null}
@@ -174,9 +175,9 @@ function AgentPanel() {
           ))}
         </div>
       )}
-      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+      {error && <p role="alert" className="mt-3 text-sm text-red-300">{error}</p>}
       {run && (
-        <div className="mt-4 space-y-2">
+        <div role="status" aria-live="polite" className="mt-4 space-y-2">
           <p className="text-xs text-[#a8988a]">{run.agent}</p>
           <ol className="space-y-1.5">
             {run.steps.map((step, i) => (

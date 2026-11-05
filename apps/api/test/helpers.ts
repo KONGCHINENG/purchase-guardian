@@ -1,12 +1,13 @@
 import { MockPayPalGateway, type PayPalGateway } from "@guardian/paypal-client";
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { buildApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { createDatabase, type Database } from "../src/db/index";
 import { runMigrations } from "../src/db/migrate";
 import { HeuristicAnalyzer } from "../src/modules/ai/heuristic";
 import type { AiAnalysis, AnalysisContext, PurchaseAnalyzer } from "../src/modules/ai/index";
-import { OfflineShoppingAgent } from "../src/modules/demo-store/agent";
+import { OfflineShoppingAgent, type ShoppingAgentModel } from "../src/modules/demo-store/agent";
 import type { Notifier, PushMessage } from "../src/modules/push/service";
 
 /** Heuristic parse with a controllable confidence, standing in for a confident LLM. */
@@ -25,21 +26,26 @@ export class FakeAnalyzer implements PurchaseAnalyzer {
 
 export type TestApp = { app: FastifyInstance; db: Database; analyzer: FakeAnalyzer; notifier: FakeNotifier; close: () => Promise<void> };
 
-export async function createTestApp(paypal: PayPalGateway = new MockPayPalGateway()): Promise<TestApp> {
+export async function createTestApp(
+  paypal: PayPalGateway = new MockPayPalGateway(),
+  opts: { agentModel?: ShoppingAgentModel; env?: Record<string, string> } = {},
+): Promise<TestApp> {
   const config = loadConfig({
     NODE_ENV: "test",
     JWT_SECRET: "test-secret-test-secret-test-secret-0123",
-    DATABASE_URL: "pglite://memory",
+    // Set TEST_DATABASE_URL to run the same suite through the pg driver against real Postgres.
+    DATABASE_URL: process.env.TEST_DATABASE_URL ?? "pglite://memory",
     WEB_URL: "http://localhost:3000",
     PAYPAL_ENV: "mock",
     LOG_LEVEL: "silent",
     RATE_LIMIT_AUTH_PER_MINUTE: "1000",
+    ...opts.env,
   });
   const db = await createDatabase(config.database);
   await runMigrations(db);
   const analyzer = new FakeAnalyzer();
   const notifier = new FakeNotifier();
-  const app = await buildApp({ config, db, analyzer, paypal, notifier, agentModel: new OfflineShoppingAgent(), logger: false });
+  const app = await buildApp({ config, db, analyzer, paypal, notifier, agentModel: opts.agentModel ?? new OfflineShoppingAgent(), logger: false });
   await app.ready();
   return { app, db, analyzer, notifier, close: async () => { await app.close(); await db.close(); } };
 }
@@ -54,9 +60,8 @@ export class FakeNotifier implements Notifier {
   }
 }
 
-let counter = 0;
 export async function registerUser(app: FastifyInstance, overrides: { email?: string; password?: string } = {}) {
-  const email = overrides.email ?? `user${++counter}-${Date.now()}@example.com`;
+  const email = overrides.email ?? `user-${randomUUID()}@example.com`;
   const res = await app.inject({
     method: "POST",
     url: "/api/v1/auth/register",

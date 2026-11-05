@@ -10,7 +10,7 @@ Every response carries `x-request-id` (send your own to correlate logs).
 |---|---|---|---|
 | POST | `/auth/register` | `{ email, password (≥10), fullName? }` | 201 → `{ accessToken, expiresIn, user }` + `guardian_rt` httpOnly cookie |
 | POST | `/auth/login` | `{ email, password }` | 401 `INVALID_CREDENTIALS` |
-| POST | `/auth/refresh` | cookie (or `{ refreshToken }`) | Rotates the refresh token; reusing an old one revokes all sessions |
+| POST | `/auth/refresh` | cookie (or `{ refreshToken }`) | Rotates the refresh token; reusing one more than 20 s after rotation revokes all sessions |
 | POST | `/auth/logout` | cookie | 204 |
 | GET | `/auth/me` | — | Current user |
 

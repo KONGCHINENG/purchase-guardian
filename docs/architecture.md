@@ -44,13 +44,13 @@
 | Data access | `pg` + hand-written SQL, no ORM | Money logic needs exact control over locks (`FOR UPDATE`, advisory locks) and transactions. SQL is reviewed alongside code. |
 | Local DB | PGlite (Postgres compiled to WASM) | Zero-install dev and fast hermetic tests on the *same* SQL dialect as production. `DATABASE_URL=pglite://…` vs `postgres://…`. |
 | Redis / BullMQ | **Deferred** | Not needed for correctness at MVP scale: budget locks live in Postgres, approval expiry is lazy, AI runs inline (~1–3 s). Add when moving AI/webhooks to workers (see scaling). |
-| AI | Claude Opus 5.5 via `messages.parse` + Zod structured output, effort `low` | One bounded extraction call per request. Output is re-validated with the strict shared schema, then merged with deterministic risk signals. |
+| AI | NVIDIA NIM (`meta/llama-3.3-70b-instruct`) or Claude Opus 5.5, chosen by which key is set, with a heuristic fallback | One bounded extraction call per request. Output is re-validated with the strict shared schema, then merged with deterministic risk signals. |
 | Payments | PayPal Orders v2, intent `CAPTURE`, redirect approval | Buyer approves in PayPal; we capture server-side. `PayPal-Request-Id` on every mutation. |
 
 ## Guardian Checkout, agent and phone
 
 - **Guardian Checkout** (`modules/checkout-sessions`) puts a 3-D-Secure-style redirect step in front of PayPal: merchant session → `/pay/:id` → policy → PayPal → capture → merchant return URL. It reuses the exact decision path below (`applyPolicyDecision`). See [guardian-checkout.md](guardian-checkout.md).
-- **Shopping agent** (`modules/demo-store/agent.ts`) is an NVIDIA NIM tool-calling loop (OpenAI-compatible API, `openai` SDK). Its only "spend" tool creates a checkout session. When no key is set, an offline planner produces the same trace.
+- **Shopping agent** (`modules/demo-store/agent.ts`) is an NVIDIA NIM tool-calling loop (OpenAI-compatible API, `openai` SDK). Its only "spend" tool creates a checkout session. With no key, after a model failure, or past `AGENT_DAILY_LIMIT`, an offline planner produces the same trace and is named in it.
 - **Phone (PWA)** is the web app with a manifest, service worker and Web Push (VAPID, `web-push`). `applyPolicyDecision` notifies the user's devices on `require_approval`, and the waiting checkout page polls and continues on approval.
 
 ## Request lifecycle
@@ -60,7 +60,7 @@ POST /purchase-requests "Buy a $65 gift from Amazon"
   │ tx: INSERT purchase_request(status=analyzing) + audit(submitted)
   ▼
 AI analyzer (outside any transaction — model latency never holds locks)
-  │ Claude → structured intent → PurchaseIntentSchema.parse → + deterministic risk flags
+  │ NVIDIA or Claude → structured intent → PurchaseIntentSchema.parse → + deterministic risk flags
   │ on model error/refusal → heuristic parser, flagged ai_unavailable / ai_refused
   ▼
 tx (per-user advisory lock):

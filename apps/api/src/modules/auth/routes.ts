@@ -13,6 +13,10 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext) {
   // Credential endpoints get a tight per-IP limit to slow brute force and signup abuse.
   const authRateLimit = { config: { rateLimit: { max: ctx.config.rateLimits.authPerMinute, timeWindow: "1 minute" } } };
 
+  // Every full page load refreshes (the access token lives in memory), so a normal checkout
+  // round trip uses several. A tight limit here would sign people out mid-payment.
+  const refreshRateLimit = { config: { rateLimit: { max: Math.max(120, ctx.config.rateLimits.authPerMinute), timeWindow: "1 minute" } } };
+
   const sendSession = (reply: FastifyReply, session: auth.Session, status = 200): AuthResponse => {
     // The refresh token lives only in an httpOnly cookie scoped to the auth routes.
     reply.setCookie(REFRESH_COOKIE, session.refreshToken, {
@@ -39,7 +43,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext) {
     return sendSession(reply, await auth.login(ctx, input, metaOf(req)));
   });
 
-  app.post("/auth/refresh", authRateLimit, async (req, reply) => {
+  app.post("/auth/refresh", refreshRateLimit, async (req, reply) => {
     const token = refreshTokenFrom(req.cookies, req.body);
     if (!token) throw unauthorized("No session");
     try {

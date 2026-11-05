@@ -88,3 +88,12 @@ body {
     animation: none;
   }
 }
+
+/* iOS zooms the page when an input under 16px gets focus. Unlayered, so it beats utilities. */
+@media (max-width: 639px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

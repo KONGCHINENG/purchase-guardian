@@ -23,7 +23,7 @@ function Complete() {
   if (!sessionId || failed) return <Message emoji="🤔" title="We couldn't find that order." />;
   if (!session) {
     return (
-      <div className="flex justify-center py-24 text-[#8a7a68]">
+      <div className="flex justify-center py-24 text-[#6f6153] dark:text-[#b3a595]">
         <Spinner className="size-6" />
       </div>
     );
@@ -56,7 +56,7 @@ function Message({ emoji, title, children }: { emoji: string; title: string; chi
         {emoji}
       </div>
       <h1 className="mt-4 font-serif text-2xl font-semibold">{title}</h1>
-      {children && <p className="mt-2 text-sm text-[#8a7a68]">{children}</p>}
+      {children && <p className="mt-2 text-sm text-[#6f6153] dark:text-[#b3a595]">{children}</p>}
       <Link href="/store" className="mt-8 inline-block rounded-full bg-[#2b2118] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#c2541b] dark:bg-[#f3ebe1] dark:text-[#1a1511]">
         Back to the store
       </Link>

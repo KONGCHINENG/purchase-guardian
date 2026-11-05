@@ -18,12 +18,21 @@ export default function PayReturnPage() {
     if (started.current) return;
     started.current = true;
     api<CheckoutSessionDto>(`/checkout-sessions/${id}/complete`, { method: "POST" })
-      .then((s) => {
-        setSession(s);
-        if (s.redirectUrl) setTimeout(() => window.location.assign(s.redirectUrl!), 1600);
-      })
+      .then(setSession)
       .catch((e) => setError(errorMessage(e)));
   }, [id]);
+
+  // Finished: back to the merchant. A capture PayPal is still processing: keep checking.
+  useEffect(() => {
+    if (!session) return;
+    const url = session.redirectUrl;
+    const timer = url
+      ? setTimeout(() => window.location.assign(url), 1600)
+      : setTimeout(() => {
+          api<CheckoutSessionDto>(`/checkout-sessions/${id}/view`).then(setSession).catch(() => undefined);
+        }, 3000);
+    return () => clearTimeout(timer);
+  }, [id, session]);
 
   return (
     <Card className="p-8 text-center">
@@ -47,8 +56,9 @@ export default function PayReturnPage() {
           <ShieldMark className="mx-auto size-12 text-brand" />
           <p className="mt-3 text-lg font-semibold text-ink">{session.status === "completed" ? "Payment complete" : "Payment processing"}</p>
           <p className="tabular text-3xl font-semibold text-ink">{money(session.amountCents, session.currency)}</p>
-          <p className="mt-2 flex items-center justify-center gap-2 text-sm text-ink-soft">
-            <Spinner className="size-3" /> Returning to {session.merchant.name}…
+          <p role="status" className="mt-2 flex items-center justify-center gap-2 text-sm text-ink-soft">
+            <Spinner className="size-3" />
+            {session.redirectUrl ? `Returning to ${session.merchant.name}…` : "PayPal is still processing this. It's safe to wait here or close this page."}
           </p>
         </>
       )}

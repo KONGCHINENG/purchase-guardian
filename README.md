@@ -23,7 +23,7 @@ AI agent at a store: "restock kitchen basics under $30"
 - **AI shopping agent.** It runs on NVIDIA NIM with tool calling: search the catalog, build a cart, request checkout. It can't pay; it can only ask Guardian.
 - **Installable phone app (PWA).** It has a bottom-tab layout, works offline, and supports **push notifications**. When a checkout needs approval your phone gets a notification, and the waiting checkout page continues on its own once you approve.
 
-- **Natural-language purchase requests.** Claude Opus 5.5 turns them into a validated, structured intent using structured outputs and Zod.
+- **Natural-language purchase requests.** NVIDIA NIM or Claude Opus 5.5 turns them into a validated, structured intent using structured outputs and Zod.
 - **Deterministic policy engine.** It applies monthly budget, per-purchase limit, approval threshold, blocked/allowed merchants, blocked categories, and an AI-confidence sensitivity level. Every decision is explained in plain language.
 - **Human approvals.** Approvals expire. The policy is re-checked at checkout in case your limits changed after you approved.
 - **PayPal Orders v2.**
@@ -36,7 +36,7 @@ AI agent at a store: "restock kitchen basics under $30"
 
 ## Tech
 
-Next.js 16 · Fastify 5 · PostgreSQL (PGlite for zero-setup local dev) · Claude Opus 5.5 (`@anthropic-ai/sdk`) · PayPal Orders v2 · TypeScript monorepo (npm workspaces).
+Next.js 16 · Fastify 5 · PostgreSQL (PGlite for zero-setup local dev) · NVIDIA NIM or Claude Opus 5.5 · PayPal Orders v2 · TypeScript monorepo (npm workspaces).
 
 | Path | What it is |
 |---|---|
@@ -109,6 +109,12 @@ npm test          # policy engine, PayPal client, heuristic parser, API integrat
 npm run typecheck
 ```
 
+To run the API tests through the production `pg` driver, point them at an empty Postgres database:
+
+```bash
+TEST_DATABASE_URL=postgres://user:pass@localhost:5432/guardian_test npm test -w @guardian/api
+```
+
 The API integration tests run the real HTTP stack against embedded Postgres and cover:
 
 - the full purchase flow
@@ -125,7 +131,8 @@ The API integration tests run the real HTTP stack against embedded Postgres and 
 `render.yaml` is a Render Blueprint that sets up managed Postgres, the API and the web app, all in the Oregon region.
 
 - On the **API**, set `WEB_URL`, `CORS_ORIGINS`, `PAYPAL_*`, `NVIDIA_API_KEY` and the `VAPID_*` keys.
-- On the **web app**, set `API_URL`.
+- On the **web app**, set `API_URL`. It's read at build time, so redeploy the web service if it changes.
+- After the first deploy, set `TRUST_PROXY` on the API to the number of proxies in front of it (see [docs/security.md](docs/security.md)).
 - For **global edge caching**, put the web service behind Cloudflare. Static assets already ship with immutable cache headers.
 
 ## How AI is used

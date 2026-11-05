@@ -23,7 +23,12 @@ const EnvSchema = z
     /** Public origin of the web app; used for PayPal return URLs and CORS. */
     WEB_URL: z.string().url().default("http://localhost:3000"),
     CORS_ORIGINS: z.string().optional(),
-    TRUST_PROXY: bool.default(true),
+    /** true, false, or the number of proxy hops in front of the API (a number stops spoofed client IPs). */
+    TRUST_PROXY: z
+      .string()
+      .regex(/^(true|false|\d+)$/, "TRUST_PROXY must be true, false or a hop count")
+      .default("true")
+      .transform((v) => (v === "true" ? true : v === "false" ? false : Number(v))),
 
     AI_PROVIDER: z.enum(["nvidia", "anthropic", "heuristic"]).optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
@@ -41,6 +46,8 @@ const EnvSchema = z
     CHECKOUT_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(30),
     /** Seeds the built-in demo merchant (store + AI shopping agent). */
     DEMO_STORE_ENABLED: bool.default(true),
+    /** LLM shopping-agent runs per day (per API instance); after that the offline planner answers. */
+    AGENT_DAILY_LIMIT: z.coerce.number().int().nonnegative().default(300),
 
     PAYPAL_ENV: z.enum(["sandbox", "live", "mock"]).default("mock"),
     PAYPAL_CLIENT_ID: z.string().optional(),
@@ -101,6 +108,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
         : null,
     checkoutSessionTtlMinutes: e.CHECKOUT_SESSION_TTL_MINUTES,
     demoStoreEnabled: e.DEMO_STORE_ENABLED,
+    agentDailyLimit: e.AGENT_DAILY_LIMIT,
     paypal: {
       environment: e.PAYPAL_ENV,
       clientId: e.PAYPAL_CLIENT_ID,

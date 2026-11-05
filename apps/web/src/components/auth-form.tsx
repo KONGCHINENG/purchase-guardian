@@ -7,13 +7,20 @@ import { errorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import { Alert, Button, Field, Input, ShieldMark } from "./ui";
 
+/** Same-site paths only: `//evil.example` also starts with a slash but leaves the site. */
+function safeNext(next: string | null): string {
+  return next && /^\/(?![/\\])/.test(next) ? next : "/dashboard";
+}
+
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const auth = useAuth();
   const router = useRouter();
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const next = params.get("next")?.startsWith("/") ? params.get("next")! : "/dashboard";
+  const next = safeNext(params.get("next"));
+  // Keep the destination when switching forms: a new shopper mid-checkout must land back on it.
+  const carry = params.get("next") ? `?next=${encodeURIComponent(next)}` : "";
 
   useEffect(() => {
     if (auth.status === "authenticated") router.replace(next);
@@ -77,14 +84,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           {mode === "login" ? (
             <>
               New here?{" "}
-              <Link href="/register" className="font-medium text-brand hover:underline">
+              <Link href={`/register${carry}`} className="font-medium text-brand hover:underline">
                 Create an account
               </Link>
             </>
           ) : (
             <>
               Already have an account?{" "}
-              <Link href="/login" className="font-medium text-brand hover:underline">
+              <Link href={`/login${carry}`} className="font-medium text-brand hover:underline">
                 Sign in
               </Link>
             </>

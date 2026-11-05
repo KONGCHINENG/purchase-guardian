@@ -19,6 +19,7 @@ function CheckoutView() {
   const [busy, setBusy] = useState<null | "approve" | "reject" | "pay" | "cancel">(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const redirected = useRef(false);
+  const cancelling = useRef(false);
 
   const go = useCallback((url: string) => {
     if (redirected.current) return;
@@ -33,9 +34,9 @@ function CheckoutView() {
       .catch((e) => setError(errorMessage(e)));
   }, [id]);
 
-  // 2) While waiting for approval (possibly on another device), poll.
+  // 2) While undecided or waiting for approval (possibly on another device), poll.
   useEffect(() => {
-    if (session?.status !== "pending_approval") return;
+    if (session?.status !== "pending_approval" && session?.status !== "open") return;
     const timer = setInterval(() => {
       api<CheckoutSessionDto>(`/checkout-sessions/${id}/view`).then(setSession).catch(() => undefined);
     }, POLL_MS);
@@ -59,7 +60,9 @@ function CheckoutView() {
     if (!session) return;
     if (session.status === "approved" && !paypalCancelled) {
       setCountdown(AUTO_CONTINUE_MS);
-      const t = setTimeout(() => void pay(), AUTO_CONTINUE_MS);
+      const t = setTimeout(() => {
+        if (!cancelling.current) void pay();
+      }, AUTO_CONTINUE_MS);
       return () => clearTimeout(t);
     }
     if (session.redirectUrl && session.status !== "completed") {
@@ -84,11 +87,13 @@ function CheckoutView() {
   };
 
   const cancel = async () => {
+    cancelling.current = true;
     setBusy("cancel");
     try {
       const next = await api<CheckoutSessionDto>(`/checkout-sessions/${id}/cancel`, { method: "POST" });
       if (next.redirectUrl) go(next.redirectUrl);
     } catch (e) {
+      cancelling.current = false;
       setError(errorMessage(e));
       setBusy(null);
     }
@@ -144,7 +149,9 @@ function CheckoutView() {
       </div>
 
       <div className="border-t border-line bg-sunken/50 p-6">
-        <StatusHeadline session={session} countdown={countdown} paypalCancelled={paypalCancelled} />
+        <div role="status" aria-live="polite">
+          <StatusHeadline session={session} countdown={countdown} paypalCancelled={paypalCancelled} />
+        </div>
         {decision && <p className="mt-2 text-sm leading-relaxed text-ink-soft">{decision.explanation}</p>}
         {decision && decision.triggeredRules.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">

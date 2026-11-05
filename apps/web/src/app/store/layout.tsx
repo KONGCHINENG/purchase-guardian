@@ -13,7 +13,7 @@ export default function StoreLayout({ children }: { children: ReactNode }) {
           <Link href="/store" className="font-serif text-xl font-semibold tracking-tight">
             Northwind <span className="text-[#c2541b]">Market</span>
           </Link>
-          <span className="rounded-full border border-[#eadfce] px-2.5 py-1 text-[11px] uppercase tracking-wide text-[#8a7a68] dark:border-[#3a2f25]">
+          <span className="rounded-full border border-[#eadfce] px-2.5 py-1 text-[11px] uppercase tracking-wide text-[#6f6153] dark:text-[#b3a595] dark:border-[#3a2f25]">
             Demo merchant
           </span>
         </div>

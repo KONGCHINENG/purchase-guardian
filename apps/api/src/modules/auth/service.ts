@@ -51,19 +51,27 @@ export async function login(ctx: AppContext, input: LoginInput, meta: RequestMet
 }
 
 /**
- * Rotates a refresh token. Presenting an already-rotated token is treated as theft:
- * every session for that user is revoked.
+ * A token rotated moments ago is still accepted. Two tabs loading together, or a page
+ * navigating away before it stored the new cookie, present the same token honestly.
+ */
+const REFRESH_REUSE_GRACE_MS = 20_000;
+
+/**
+ * Rotates a refresh token. Presenting a token rotated earlier than the grace window is
+ * treated as theft: every session for that user is revoked.
  */
 export async function refresh(ctx: AppContext, rawToken: string, meta: RequestMeta): Promise<Session> {
   const hash = hashToken(rawToken);
   const outcome = await ctx.db.transaction(async (tx) => {
-    const { rows } = await tx.query<{ id: string; user_id: string; expires_at: Date; revoked_at: Date | null }>(
-      `SELECT id, user_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE`,
+    const { rows } = await tx.query<{ id: string; user_id: string; expires_at: Date; revoked_at: Date | null; replaced_by: string | null }>(
+      `SELECT id, user_id, expires_at, revoked_at, replaced_by FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE`,
       [hash],
     );
     const token = rows[0];
     if (!token) return { kind: "invalid" as const };
-    if (token.revoked_at) {
+    // Logged-out tokens have no replacement, so they never qualify for the grace window.
+    const justRotated = token.revoked_at && token.replaced_by && Date.now() - new Date(token.revoked_at).getTime() < REFRESH_REUSE_GRACE_MS;
+    if (token.revoked_at && !justRotated) {
       await tx.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [token.user_id]);
       await recordAudit(tx, { userId: token.user_id, actor: "system", action: "auth.refresh_token_reuse", outcome: "all_sessions_revoked", meta });
       return { kind: "reused" as const };
@@ -75,7 +83,7 @@ export async function refresh(ctx: AppContext, rawToken: string, meta: RequestMe
     if (!user) return { kind: "invalid" as const };
     const session = await issueSession(ctx, tx, user, meta);
     await tx.query(
-      `UPDATE refresh_tokens SET revoked_at = now(), replaced_by = (SELECT id FROM refresh_tokens WHERE token_hash = $2) WHERE id = $1`,
+      `UPDATE refresh_tokens SET revoked_at = now(), replaced_by = (SELECT id FROM refresh_tokens WHERE token_hash = $2) WHERE id = $1 AND revoked_at IS NULL`,
       [token.id, hashToken(session.refreshToken)],
     );
     return { kind: "ok" as const, session };

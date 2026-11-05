@@ -45,6 +45,8 @@ describe("auth", () => {
     expect(rotated).not.toBe(u.refreshCookie);
 
     // Replaying the old token = theft signal → all sessions die, including the rotated one.
+    // Past the grace window for tabs refreshing at the same moment.
+    await t.db.query(`UPDATE refresh_tokens SET revoked_at = now() - interval '1 minute' WHERE user_id = $1 AND revoked_at IS NOT NULL`, [u.userId]);
     const replay = await t.app.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { guardian_rt: u.refreshCookie } });
     expect(replay.statusCode).toBe(401);
     const afterTheft = await t.app.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { guardian_rt: rotated } });
@@ -195,7 +197,7 @@ describe("webhooks and audit integrity", () => {
     const u = await registerUser(t.app);
     const req = await submit(u.auth, "Buy dish soap for $9 from Target");
     const order = (await checkout(u.auth, req.id)).json();
-    const event = { id: "WH-1", event_type: "CHECKOUT.ORDER.APPROVED", resource: { id: order.paypalOrderId } };
+    const event = { id: `WH-${req.id}`, event_type: "CHECKOUT.ORDER.APPROVED", resource: { id: order.paypalOrderId } };
 
     const first = await t.app.inject({ method: "POST", url: "/api/v1/webhooks/paypal", payload: event });
     expect(first.json()).toMatchObject({ result: "processed" });

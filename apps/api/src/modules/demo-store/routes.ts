@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { AppContext } from "../../context";
 import { badRequest, parseWith } from "../../lib/errors";
 import { createSession, ensureDemoMerchant, getSessionForMerchant, type MerchantRow } from "../checkout-sessions/service";
-import { createAgentTools, type CartLine } from "./agent";
+import { createAgentTools, OfflineShoppingAgent, type CartLine, type ShoppingAgentModel } from "./agent";
 import { CATALOG, cartCategory, findProduct } from "./catalog";
 
 export async function demoStoreRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -31,6 +31,25 @@ export async function demoStoreRoutes(app: FastifyInstance, ctx: AppContext) {
     return { sessionId: session.id, checkoutUrl: session.checkoutUrl };
   };
 
+  const runAgent = async (model: ShoppingAgentModel, goal: string): Promise<AgentRunDto> => {
+    let checkout: AgentRunDto["checkout"] = null;
+    const tools = createAgentTools(async (lines, reasoning) => {
+      checkout = await openSession(lines, { name: model.name, goal, reasoning });
+      return { checkoutUrl: checkout.checkoutUrl };
+    });
+    const outcome = await model.run(goal, tools);
+    return { agent: model.name, steps: outcome.steps, message: outcome.message, cart: tools.cart, checkout };
+  };
+
+  const fallbackAgent = new OfflineShoppingAgent();
+  // Rate limits are per IP; this is the overall ceiling on LLM spend from a public endpoint.
+  const usage = { day: "", runs: 0 };
+  const llmAllowed = () => {
+    const day = new Date().toISOString().slice(0, 10);
+    if (usage.day !== day) Object.assign(usage, { day, runs: 0 });
+    return usage.runs++ < ctx.config.agentDailyLimit;
+  };
+
   app.get("/demo-store/products", async () => ({ items: CATALOG }));
 
   app.post("/demo-store/checkout", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req, reply) => {
@@ -46,17 +65,17 @@ export async function demoStoreRoutes(app: FastifyInstance, ctx: AppContext) {
   // The agent spends LLM credit: keep it on a tight per-IP budget.
   app.post("/demo-store/agent", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req): Promise<AgentRunDto> => {
     const { goal } = parseWith(AgentRunInputSchema, req.body);
-    let checkout: AgentRunDto["checkout"] = null;
-    const tools = createAgentTools(async (lines, reasoning) => {
-      checkout = await openSession(lines, { name: ctx.agentModel.name, goal, reasoning });
-      return { checkoutUrl: checkout.checkoutUrl };
-    });
     try {
-      const outcome = await ctx.agentModel.run(goal, tools);
-      return { agent: ctx.agentModel.name, steps: outcome.steps, message: outcome.message, cart: tools.cart, checkout };
+      return await runAgent(llmAllowed() ? ctx.agentModel : fallbackAgent, goal);
     } catch (error) {
-      req.log.warn({ err: error }, "Shopping agent failed");
-      return { agent: ctx.agentModel.name, steps: [], message: "The shopping agent is unavailable right now. Try again, or shop manually.", cart: tools.cart, checkout };
+      // Each attempt has its own cart, so the fallback starts clean. The trace names who actually ran.
+      req.log.warn({ err: error }, "Shopping agent failed; using the offline planner");
+      try {
+        return await runAgent(fallbackAgent, goal);
+      } catch (fallbackError) {
+        req.log.error({ err: fallbackError }, "Offline shopping agent failed");
+        return { agent: fallbackAgent.name, steps: [], message: "The shopping agent is unavailable right now. Try again, or shop manually.", cart: [], checkout: null };
+      }
     }
   });
 

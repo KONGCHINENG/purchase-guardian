@@ -28,7 +28,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
         redact: ["req.headers.authorization", "req.headers.cookie", 'res.headers["set-cookie"]'],
         ...(config.isProduction ? {} : { transport: { target: "pino-pretty", options: { colorize: true, translateTime: "HH:MM:ss" } } }),
       },
-    trustProxy: config.trustProxy,
+    trustProxy: config.trustProxy as boolean, // boolean or hop count; Fastify takes both
     bodyLimit: 64 * 1024,
     genReqId: (req) => (req.headers["x-request-id"] as string | undefined)?.slice(0, 64) || randomUUID(),
   });

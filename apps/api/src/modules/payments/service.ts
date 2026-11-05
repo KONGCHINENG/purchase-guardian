@@ -39,12 +39,15 @@ export async function createOrder(
     const description = `${request.item_name ?? "Purchase"}${request.merchant_name ? ` — ${request.merchant_name}` : ""}`;
 
     const { rows: existing } = await tx.query<OrderRow>(`SELECT * FROM paypal_orders WHERE purchase_request_id = $1`, [purchaseRequestId]);
-    if (existing[0]) {
-      const order = existing[0];
-      if (order.status === "voided") return { kind: "denied", error: conflict("ORDER_VOIDED", "This checkout was cancelled") };
-      // creating/failed: a previous attempt didn't finish; retry it with the same idempotency key.
-      return { kind: "ready", order, callPayPal: order.status === "creating" || order.status === "failed", description };
+    const previous = existing[0];
+    if (previous?.status === "voided") return { kind: "denied", error: conflict("ORDER_VOIDED", "This checkout was cancelled") };
+    // A PayPal order that failed at capture (declined, amount mismatch) must never come back to life.
+    if (previous?.status === "failed" && previous.paypal_order_id) {
+      return { kind: "denied", error: conflict("ORDER_FAILED", "This payment failed. Start a new purchase to try again.") };
     }
+    // creating: an earlier attempt didn't finish; retry it with the same idempotency key.
+    if (previous && previous.status !== "failed") return { kind: "ready", order: previous, callPayPal: previous.status === "creating", description };
+    // failed before reaching PayPal: time has passed, so it goes through every guard below again.
 
     if (request.status !== "approved") {
       const reasons: Record<string, [string, string]> = {
@@ -102,11 +105,13 @@ export async function createOrder(
       };
     }
 
-    const { rows } = await tx.query<OrderRow>(
-      `INSERT INTO paypal_orders (purchase_request_id, user_id, status, currency, amount_cents, idempotency_key)
-       VALUES ($1, $2, 'creating', $3, $4, $5) RETURNING *`,
-      [purchaseRequestId, userId, request.currency.trim(), request.amount_cents, randomUUID()],
-    );
+    const { rows } = previous
+      ? await tx.query<OrderRow>(`UPDATE paypal_orders SET status = 'creating', updated_at = now() WHERE id = $1 RETURNING *`, [previous.id])
+      : await tx.query<OrderRow>(
+          `INSERT INTO paypal_orders (purchase_request_id, user_id, status, currency, amount_cents, idempotency_key)
+           VALUES ($1, $2, 'creating', $3, $4, $5) RETURNING *`,
+          [purchaseRequestId, userId, request.currency.trim(), request.amount_cents, randomUUID()],
+        );
     await recordAudit(tx, {
       userId,
       purchaseRequestId,
@@ -183,6 +188,7 @@ export async function listOrders(ctx: AppContext, userId: string): Promise<Order
 export async function captureOrder(ctx: AppContext, userId: string, orderId: string, meta: RequestMeta): Promise<OrderDto> {
   const order = await findOwnedOrder(ctx.db, userId, orderId);
   if (order.status === "completed") return toOrderDto(order);
+  if (order.status === "voided") throw conflict("ORDER_VOIDED", "This checkout was cancelled, so nothing was charged");
   if (order.status !== "created" && order.status !== "approved") {
     throw conflict("ORDER_NOT_CAPTURABLE", `This order is ${order.status} and can't be captured`);
   }
@@ -296,7 +302,8 @@ export async function handlePayPalWebhook(ctx: AppContext, event: WebhookEvent):
           });
         }
         // Capture server-side too, so payment completes even if the buyer closes the tab.
-        if (order.status !== "completed") await captureOrderRow(ctx, { ...order, status: "approved" }, "system");
+        // Only live orders: a cancelled or failed checkout must not be charged by a late event.
+        if (order.status === "created" || order.status === "approved") await captureOrderRow(ctx, { ...order, status: "approved" }, "system");
         outcome = "processed";
         break;
       }
@@ -304,10 +311,16 @@ export async function handlePayPalWebhook(ctx: AppContext, event: WebhookEvent):
         await ctx.db.transaction(async (tx) => {
           const { rows } = await tx.query(
             `UPDATE paypal_orders SET status = 'completed', capture_id = COALESCE(capture_id, $2), updated_at = now()
-             WHERE id = $1 AND status <> 'completed' RETURNING id`,
+             WHERE id = $1 AND status IN ('creating', 'created', 'approved') RETURNING id`,
             [order.id, event.resource?.id ?? null],
           );
-          if (!rows[0]) return;
+          if (!rows[0]) {
+            // PayPal says money moved on an order we consider cancelled or failed: keep our state, flag it.
+            if (order.status !== "completed") {
+              await recordAudit(tx, { userId: order.user_id, purchaseRequestId: order.purchase_request_id, actor: "paypal", action: "payment.capture_unexpected", outcome: order.status, metadata: { webhookEventId: event.id, captureId: event.resource?.id, requiresManualReview: true } });
+            }
+            return;
+          }
           await tx.query(`UPDATE purchase_requests SET status = 'completed', updated_at = now() WHERE id = $1`, [order.purchase_request_id]);
           await recordAudit(tx, { userId: order.user_id, purchaseRequestId: order.purchase_request_id, actor: "paypal", action: "payment.captured", outcome: "COMPLETED", metadata: { webhookEventId: event.id, captureId: event.resource?.id } });
         });

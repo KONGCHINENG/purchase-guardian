@@ -1,5 +1,7 @@
 # Render Blueprint: managed Postgres + API + web (PWA).
 # Dashboard → New → Blueprint → select this repo. Fill the `sync: false` values when prompted.
+# NODE_ENV=production would make plain `npm ci` skip the build tools, hence --include=dev.
+# API_URL is read at build time (Next rewrites): if it changes, redeploy the web service.
 #
 # Region: Oregon keeps latency low for US-based judges and PayPal's US endpoints.
 # Static assets (/_next/static, icons) are served with immutable cache headers; put the
@@ -21,7 +23,7 @@ services:
     runtime: node
     region: oregon
     plan: starter
-    buildCommand: npm ci && npm run build -w @guardian/api
+    buildCommand: npm ci --include=dev && npm run build -w @guardian/api
     startCommand: npm run start -w @guardian/api
     healthCheckPath: /health/ready
     autoDeploy: true
@@ -65,7 +67,7 @@ services:
     runtime: node
     region: oregon
     plan: starter
-    buildCommand: npm ci && npm run build -w @guardian/web
+    buildCommand: npm ci --include=dev && npm run build -w @guardian/web
     startCommand: npm run start -w @guardian/web
     autoDeploy: true
     envVars:

@@ -65,7 +65,7 @@ Authorization: Bearer pgm_…
 | `approved` | Cleared; shopper is being sent to PayPal |
 | `paying` | PayPal order created, waiting for buyer approval |
 | `completed` | Captured. Ship the order. |
-| `blocked` / `cancelled` / `expired` / `failed` | Nothing was charged |
+| `blocked` / `cancelled` / `expired` / `failed` | Don't ship. Cancelling voids any open PayPal order, so a late return from PayPal can't charge the shopper. |
 
 ## Demo merchant
 

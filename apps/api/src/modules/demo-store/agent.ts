@@ -29,6 +29,8 @@ export interface ShoppingAgentModel {
 }
 
 const MAX_TURNS = 8;
+/** One run must finish well inside the web proxy's timeout, however slow the model is. */
+const AGENT_DEADLINE_MS = 75_000;
 
 const ToolArgs = {
   search_products: z.object({ query: z.string().min(1).max(200), max_price_cents: z.number().int().positive().optional() }),
@@ -114,16 +116,27 @@ export class NvidiaShoppingAgent implements ShoppingAgentModel {
       { role: "user", content: goal },
     ];
     let checkedOut = false;
+    const signal = AbortSignal.timeout(AGENT_DEADLINE_MS);
 
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const completion = await this.client.chat.completions.create({
-        model: this.config.model,
-        temperature: 0.2,
-        max_tokens: 800,
-        tools: TOOL_DEFS,
-        tool_choice: checkedOut ? "none" : "auto",
-        messages,
-      });
+      let completion: OpenAI.Chat.Completions.ChatCompletion;
+      try {
+        completion = await this.client.chat.completions.create(
+          {
+            model: this.config.model,
+            temperature: 0.2,
+            max_tokens: 800,
+            tools: TOOL_DEFS,
+            tool_choice: checkedOut ? "none" : "auto",
+            messages,
+          },
+          { signal, maxRetries: 1 },
+        );
+      } catch (error) {
+        // Only the closing sentence is lost once the cart has been handed over.
+        if (checkedOut) return { steps, message: "Cart sent to your Guardian for a decision." };
+        throw error;
+      }
       const message = completion.choices[0]?.message;
       if (!message) break;
       const calls = (message.tool_calls ?? []).filter((c) => c.type === "function");
@@ -131,6 +144,9 @@ export class NvidiaShoppingAgent implements ShoppingAgentModel {
       messages.push({ role: "assistant", content: message.content ?? "", tool_calls: calls.length ? calls : undefined });
 
       if (calls.length === 0) {
+        // Some models print tool calls as plain text instead of making them: treat that as a failed run.
+        if (!steps.some((s) => s.kind === "tool")) throw new Error("Model answered without using its tools");
+        checkedOut ||= await handOverCart(tools, steps);
         return { steps, message: message.content?.trim() || (checkedOut ? "Cart sent to your Guardian." : "I couldn't build a cart for that goal.") };
       }
 
@@ -141,6 +157,7 @@ export class NvidiaShoppingAgent implements ShoppingAgentModel {
         messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(output) });
       }
     }
+    checkedOut ||= await handOverCart(tools, steps);
     return { steps, message: checkedOut ? "Cart sent to your Guardian for a decision." : "I ran out of steps before finishing the cart." };
   }
 }
@@ -181,6 +198,15 @@ export class OfflineShoppingAgent implements ShoppingAgentModel {
     steps.push({ kind: "tool", name: "request_checkout", input: { reasoning }, output: checkout });
     return { steps, message: `I picked ${cart.lines.length} item${cart.lines.length > 1 ? "s" : ""} for ${formatCents(cart.totalCents)} and sent the cart to your Guardian.` };
   }
+}
+
+/** The model built a cart but never asked to check out. Guardian still decides, so hand it over. */
+async function handOverCart(tools: AgentTools, steps: AgentStep[]): Promise<boolean> {
+  if (tools.viewCart().lines.length === 0) return false;
+  const reasoning = "Cart built for the goal; handing it to Guardian for a decision.";
+  const output = await tools.requestCheckout(reasoning);
+  steps.push({ kind: "tool", name: "request_checkout", input: { reasoning }, output });
+  return typeof output === "object";
 }
 
 async function executeTool(name: string, rawArgs: string, tools: AgentTools): Promise<unknown> {
