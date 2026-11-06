@@ -8,7 +8,7 @@ import type { AgentStep, StoreProduct } from "@guardian/shared";
 import type OpenAI from "openai";
 import { z } from "zod";
 import { createNvidiaClient, type NvidiaConfig } from "../ai/nvidia";
-import { findProduct, searchCatalog } from "./catalog";
+import { findProduct, searchCatalog, searchTerms } from "./catalog";
 
 export type CartLine = { sku: string; name: string; quantity: number; unitAmountCents: number };
 
@@ -174,8 +174,12 @@ export class OfflineShoppingAgent implements ShoppingAgentModel {
     const budget = parseBudget(goal);
     steps.push({ kind: "thought", text: budget ? `Looking for items that fit "${goal}" within ${formatCents(budget)}.` : `Looking for items that fit "${goal}".` });
 
+    // Without a single word that names a product, any "match" would be a guess: buy nothing.
+    if (searchTerms(goal).length === 0) return { steps, message: "Tell me what you'd like to buy, for example \"dish soap and paper towels\"." };
+
     const results = tools.searchProducts(goal);
     steps.push({ kind: "tool", name: "search_products", input: { query: goal }, output: results.map(brief) });
+    if (results.length === 0) return { steps, message: "Northwind Market doesn't sell anything matching that goal, so I didn't add anything to the cart." };
 
     let total = 0;
     const wantsMany = /\b(restock|basics|essentials|supplies|groceries)\b/i.test(goal);

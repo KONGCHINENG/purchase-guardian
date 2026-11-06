@@ -1,6 +1,7 @@
 import type { AgentRunDto, CheckoutSessionDto, MerchantCheckoutSessionDto } from "@guardian/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMerchant } from "../src/modules/checkout-sessions/service";
+import { searchCatalog } from "../src/modules/demo-store/catalog";
 import { createTestApp, registerUser, type TestApp } from "./helpers";
 
 let t: TestApp;
@@ -142,6 +143,22 @@ describe("demo store + shopping agent", () => {
     const claimed = (await shopper(u.auth, "claim", run.checkout!.sessionId)).json() as CheckoutSessionDto;
     expect(claimed.merchant.name).toBe("Northwind Market");
     expect(claimed.agentContext?.goal).toBe("Restock kitchen basics under $30");
+  });
+
+  it("the offline planner buys nothing when the store has no match (no 'one' -> phone cable)", async () => {
+    for (const goal of ["Buy me one kettle under $30", "buy something"]) {
+      const run = (await t.app.inject({ method: "POST", url: "/api/v1/demo-store/agent", payload: { goal } })).json() as AgentRunDto;
+      expect(run.cart, goal).toEqual([]);
+      expect(run.checkout, goal).toBeNull();
+    }
+  });
+
+  it("search matches whole words, plurals and prefixes, ignoring filler words", () => {
+    expect(searchCatalog("Buy me one kettle under $30")).toEqual([]);
+    expect(searchCatalog("candles").map((p) => p.sku)).toEqual(["GF-CANDLE"]);
+    expect(searchCatalog("choc").map((p) => p.sku)).toEqual(["GF-CHOC"]);
+    expect(searchCatalog("phone charger").map((p) => p.sku)).toEqual(["EL-CABLE"]);
+    expect(searchCatalog("Get a gift card worth $200")[0]?.sku).toBe("EN-GIFTCARD");
   });
 
   it("categorizes restricted items so Guardian can block them", async () => {

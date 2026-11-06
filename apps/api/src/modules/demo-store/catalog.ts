@@ -22,13 +22,31 @@ export const CATALOG: StoreProduct[] = [
 
 export const findProduct = (sku: string) => CATALOG.find((p) => p.sku === sku);
 
+/** Words that say how to shop, not what to buy. Matching them caused "one kettle" to find a phone cable. */
+const STOP_WORDS = new Set(
+  "a an the and or for with without of to in on at by from me my our us i we you some any one two three few buy get want need find order purchase please under below over above less more than max maximum around about total budget cheap new item items thing things something".split(" "),
+);
+
+const words = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/** "candles" and "candle" should meet; keep it simple and predictable. */
+const stem = (w: string) => (w.length > 4 && w.endsWith("es") && !w.endsWith("ses") ? w.slice(0, -2) : w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+
+/** The words in a query that can actually identify a product. Empty means "no real search terms". */
+export function searchTerms(query: string): string[] {
+  return [...new Set(words(query).filter((w) => w.length > 2 && !STOP_WORDS.has(w) && !/^\d+$/.test(w)).map(stem))];
+}
+
+/** A term matches a whole word (or the start of one, for terms of 4+ letters, so "choc" finds chocolate). */
+const matches = (term: string, productWords: string[]) => productWords.some((w) => w === term || (term.length >= 4 && w.startsWith(term)));
+
 /** Simple relevance search shared by the store UI and the shopping agent's tool. */
 export function searchCatalog(query: string, maxPriceCents?: number, limit = 6): StoreProduct[] {
-  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+  const terms = searchTerms(query);
   const scored = CATALOG.filter((p) => maxPriceCents === undefined || p.priceCents <= maxPriceCents)
     .map((p) => {
-      const hay = `${p.name} ${p.description} ${p.category} ${p.tags.join(" ")}`.toLowerCase();
-      return { p, score: terms.reduce((s, t) => s + (hay.includes(t) ? (p.tags.includes(t) ? 2 : 1) : 0), 0) };
+      const tagWords = p.tags.flatMap(words).map(stem);
+      const allWords = [...words(`${p.name} ${p.description} ${p.category}`).map(stem), ...tagWords];
+      return { p, score: terms.reduce((s, t) => s + (matches(t, tagWords) ? 2 : matches(t, allWords) ? 1 : 0), 0) };
     })
     .filter((x) => terms.length === 0 || x.score > 0)
     .sort((a, b) => b.score - a.score || a.p.priceCents - b.p.priceCents);
