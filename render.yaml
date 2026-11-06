@@ -42,7 +42,7 @@ services:
       - key: NVIDIA_API_KEY
         sync: false
       - key: NVIDIA_MODEL
-        value: meta/llama-3.3-70b-instruct
+        value: nvidia/nemotron-3.5-super-vl-120b-a12b
       # PayPal Sandbox credentials (developer.paypal.com → Apps & Credentials)
       - key: PAYPAL_ENV
         value: sandbox

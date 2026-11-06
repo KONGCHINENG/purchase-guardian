@@ -34,7 +34,7 @@ const EnvSchema = z
     ANTHROPIC_API_KEY: z.string().optional(),
     ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
     NVIDIA_API_KEY: z.string().optional(),
-    NVIDIA_MODEL: z.string().default("meta/llama-3.3-70b-instruct"),
+    NVIDIA_MODEL: z.string().default("nvidia/nemotron-3.5-super-vl-120b-a12b"),
     NVIDIA_BASE_URL: z.string().url().default("https://integrate.api.nvidia.com/v1"),
     AI_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
 

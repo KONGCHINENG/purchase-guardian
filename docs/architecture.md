@@ -44,7 +44,7 @@
 | Data access | `pg` + hand-written SQL, no ORM | Money logic needs exact control over locks (`FOR UPDATE`, advisory locks) and transactions. SQL is reviewed alongside code. |
 | Local DB | PGlite (Postgres compiled to WASM) | Zero-install dev and fast hermetic tests on the *same* SQL dialect as production. `DATABASE_URL=pglite://…` vs `postgres://…`. |
 | Redis / BullMQ | **Deferred** | Not needed for correctness at MVP scale: budget locks live in Postgres, approval expiry is lazy, AI runs inline (~1–3 s). Add when moving AI/webhooks to workers (see scaling). |
-| AI | NVIDIA NIM (`meta/llama-3.3-70b-instruct`) or Claude Opus 5.5, chosen by which key is set, with a heuristic fallback | One bounded extraction call per request. Output is re-validated with the strict shared schema, then merged with deterministic risk signals. |
+| AI | NVIDIA NIM (`nvidia/nemotron-3.5-super-vl-120b-a12b`) or Claude Opus 5.5, chosen by which key is set, with a heuristic fallback | One bounded extraction call per request. Output is re-validated with the strict shared schema, then merged with deterministic risk signals. |
 | Payments | PayPal Orders v2, intent `CAPTURE`, redirect approval | Buyer approves in PayPal; we capture server-side. `PayPal-Request-Id` on every mutation. |
 
 ## Guardian Checkout, agent and phone

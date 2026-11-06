@@ -65,7 +65,7 @@ Open http://localhost:3000 and create an account.
 
 ### Use NVIDIA (recommended) or Claude
 
-- **NVIDIA:** set `NVIDIA_API_KEY` in `apps/api/.env` (from https://build.nvidia.com). It powers both request parsing and the shopping agent. The default model is `meta/llama-3.3-70b-instruct`; change it with `NVIDIA_MODEL`.
+- **NVIDIA:** set `NVIDIA_API_KEY` in `apps/api/.env` (from https://build.nvidia.com). It powers both request parsing and the shopping agent. The default model is `nvidia/nemotron-3.5-super-vl-120b-a12b`; change it with `NVIDIA_MODEL`.
 - **Claude:** alternatively, set `ANTHROPIC_API_KEY` to use Claude (`claude-opus-5-5`) for parsing.
 - **No key:** an offline parser and an offline agent planner keep everything working.
 
@@ -137,7 +137,7 @@ The API integration tests run the real HTTP stack against embedded Postgres and 
 
 ## How AI is used
 
-- **Shopping agent (NVIDIA NIM, `meta/llama-3.3-70b-instruct`).** A tool-calling loop with `search_products`, `add_to_cart`, `remove_from_cart`, `view_cart` and `request_checkout`. `request_checkout` only creates a Guardian Checkout session, so the agent has no way to move money. Its goal and reasoning are shown to the shopper and scanned for injected instructions.
+- **Shopping agent (NVIDIA NIM, `nvidia/nemotron-3.5-super-vl-120b-a12b`).** A tool-calling loop with `search_products`, `add_to_cart`, `remove_from_cart`, `view_cart` and `request_checkout`. `request_checkout` only creates a Guardian Checkout session, so the agent has no way to move money. Its goal and reasoning are shown to the shopper and scanned for injected instructions.
 - **Request understanding (NVIDIA or Claude Opus 5.5).** It turns free text like "buy a $65 gift from Amazon" into a structured intent (item, merchant, category, amount, confidence, risk flags). The output is re-validated against a strict schema.
 - **Decisions are never AI.** Approve, ask and block come only from the deterministic policy engine. Payments happen only after that, plus your approval when the policy asks for it.
 - **Development.** This project was built with AI assistance (Claude Code).
